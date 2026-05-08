@@ -1,34 +1,80 @@
-import React, { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronUp, FileText, User, BarChart3, Users, Briefcase, Info, LayoutDashboard } from 'lucide-react';
+import React, { useState, useMemo, useRef } from 'react';
+import { Search, ChevronDown, ChevronUp, FileText, User, BarChart3, Users, Briefcase, Info, LayoutDashboard, Receipt, Gavel, Upload, FileSpreadsheet } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import data from './data.json';
+import * as XLSX from 'xlsx';
+import initialData from './data.json';
+import tecnoLogo from './assets/tecnoLogo.webp';
 
 function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
 const App = () => {
+  const [data, setData] = useState(initialData);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeSpeaker, setActiveSpeaker] = useState('All');
   const [expandedId, setExpandedId] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const parsedData = XLSX.utils.sheet_to_json(ws);
+      
+      if (parsedData.length > 0) {
+        setData(parsedData);
+        setActiveCategory('All');
+        setActiveSpeaker('All');
+        setExpandedId(null);
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const categories = useMemo(() => {
+    const cats = Array.from(new Set(data.map(item => item.Category).filter(Boolean)));
+    return ['All', ...cats.sort()];
+  }, [data]);
 
   const stats = useMemo(() => {
     const total = data.length;
-    const shareholders = new Set(data.map(item => item['Speaker Name'])).size;
-    const finance = data.filter(item => item.Category === 'Finance').length;
-    const general = data.filter(item => item.Category === 'General').length;
-    return { total, shareholders, finance, general };
-  }, []);
+    // Get unique categories excluding 'All'
+    const uniqueCats = Array.from(new Set(data.map(item => item.Category).filter(Boolean)));
+    
+    // Map categories to counts and configurations
+    const categoryConfigs = {
+      'Finance': { icon: <Briefcase size={18} />, color: 'text-blue-600' },
+      'General': { icon: <Info size={18} />, color: 'text-emerald-600' },
+      'Tax': { icon: <Receipt size={18} />, color: 'text-orange-600' },
+      'Legal': { icon: <Gavel size={18} />, color: 'text-purple-600' },
+      'Default': { icon: <FileText size={18} />, color: 'text-slate-600' }
+    };
+
+    const categoryStats = uniqueCats.map(cat => ({
+      label: cat,
+      value: data.filter(item => item.Category === cat).length,
+      config: categoryConfigs[cat] || categoryConfigs['Default']
+    }));
+
+    return { total, categoryStats };
+  }, [data]);
 
   const speakers = useMemo(() => {
     const filteredByCat = activeCategory === 'All' 
       ? data 
       : data.filter(item => item.Category === activeCategory);
-    const uniqueSpeakers = Array.from(new Set(filteredByCat.map(item => item['Speaker Name'])));
+    const uniqueSpeakers = Array.from(new Set(filteredByCat.map(item => item['Speaker Name']).filter(Boolean)));
     return ['All', ...uniqueSpeakers.sort()];
-  }, [activeCategory]);
+  }, [data, activeCategory]);
 
   // Reset speaker if it's not in the new filtered list
   React.useEffect(() => {
@@ -40,17 +86,17 @@ const App = () => {
   const filteredData = useMemo(() => {
     return data.filter(item => {
       const matchesSearch = 
-        item.Question.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item['Speaker Name'].toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item['Short Summary'].toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item['Summery'].toLowerCase().includes(searchTerm.toLowerCase());
+        (item.Question && item.Question.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (item['Speaker Name'] && item['Speaker Name'].toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (item['Short Summary'] && item['Short Summary'].toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (item['Summery'] && item['Summery'].toLowerCase().includes(searchTerm.toLowerCase()));
       
       const matchesCategory = activeCategory === 'All' || item.Category === activeCategory;
       const matchesSpeaker = activeSpeaker === 'All' || item['Speaker Name'] === activeSpeaker;
       
       return matchesSearch && matchesCategory && matchesSpeaker;
     });
-  }, [searchTerm, activeCategory, activeSpeaker]);
+  }, [data, searchTerm, activeCategory, activeSpeaker]);
 
   const toggleExpand = (id) => {
     setExpandedId(expandedId === id ? null : id);
@@ -101,13 +147,7 @@ const App = () => {
         </div>
 
         <div className="p-4 border-t border-slate-100">
-          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/50">
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">System Status</span>
-            </div>
-            <p className="text-[10px] font-bold text-slate-600 leading-tight">Live AGM Data Feed Active — 2025</p>
-          </div>
+          <img src={tecnoLogo} alt="Tecno Logo" className=" h-[50px] rounded-xl  " />
         </div>
       </aside>
 
@@ -119,8 +159,23 @@ const App = () => {
             <h2 className="text-lg font-black tracking-tight text-slate-900 hidden sm:block">Executive Command Center</h2>
           </div>
           <div className="flex items-center gap-4">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              accept=".xlsx, .xls"
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current.click()}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-red-600 transition-all shadow-lg shadow-slate-200"
+            >
+              <Upload size={14} />
+              <span>Upload Excel</span>
+            </button>
+            <div className="h-6 w-px bg-slate-200 mx-1 hidden md:block" />
             <div className="flex items-center gap-2 text-right hidden md:block">
-              <div className="text-xs font-black text-slate-900">AGM 2025 SESSION</div>
+              <div className="text-xs font-black text-slate-900">AGM 2026 SESSION</div>
               <div className="text-[9px] font-black text-slate-400 tracking-widest uppercase">ABB Limited India</div>
             </div>
             <div className="h-6 w-px bg-slate-200 mx-1" />
@@ -144,11 +199,18 @@ const App = () => {
           </div>
 
           {/* Stats Overview */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-12">
             <StatCard label="Total Q&A" value={stats.total} icon={<BarChart3 className="text-red-600" />} />
-            <StatCard label="Speakers" value={stats.shareholders} icon={<Users className="text-slate-900" />} />
-            <StatCard label="Finance" value={stats.finance} icon={<Briefcase className="text-blue-600" />} />
-            <StatCard label="General" value={stats.general} icon={<Info className="text-emerald-600" />} />
+            {stats.categoryStats.slice(0, 4).map((catStat, idx) => (
+              <StatCard 
+                key={idx}
+                label={catStat.label} 
+                value={catStat.value} 
+                icon={React.cloneElement(catStat.config.icon, { className: catStat.config.config ? catStat.config.color : catStat.config.color })} 
+              />
+            ))}
+            {/* Fill remaining slots if less than 4 categories to maintain grid structure if needed, 
+                but dynamic slicing is usually cleaner */}
           </div>
 
           {/* Controls Bar */}
@@ -167,7 +229,7 @@ const App = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
-              {['All', 'Finance', 'General'].map((cat) => (
+              {categories.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
@@ -261,18 +323,31 @@ const App = () => {
                       <div className="space-y-5">
                         <h5 className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em]">Key Strategic Insights</h5>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {item['Detailed Points'].split('|').map((point, pIdx) => {
-                            const [title, ...desc] = point.split('**');
+                          {item['Detailed Points'].split('|').flatMap(p => p.split(' - ')).filter(p => p.trim()).map((point, pIdx) => {
+                            let title = '';
+                            let desc = '';
+                            
+                            if (point.includes('**')) {
+                              [title, ...desc] = point.split('**');
+                              desc = desc.join('**');
+                            } else if (point.includes(':')) {
+                              [title, ...desc] = point.split(':');
+                              desc = desc.join(':');
+                            } else {
+                              title = '';
+                              desc = point.startsWith('-') ? point.substring(1) : point;
+                            }
+
                             return (
-                              <div key={pIdx} className="bg-white p-5 lg:p-6 rounded-[1.5rem] border border-slate-200/80 shadow-sm hover:border-red-600/20 transition-all hover:-translate-y-1 duration-300 group/point">
-                                {desc.length > 0 ? (
-                                  <>
-                                    <span className="text-slate-900 font-black text-xs block mb-2 uppercase tracking-tight group-hover/point:text-red-600 transition-colors">{title.trim()}</span>
-                                    <p className="text-slate-500 text-xs lg:text-sm leading-relaxed font-medium">{desc.join('**').trim()}</p>
-                                  </>
-                                ) : (
-                                  <p className="text-slate-800 text-xs lg:text-sm leading-relaxed font-bold">{point.trim()}</p>
+                              <div key={pIdx} className="bg-white p-5 lg:p-6 rounded-[1.5rem] border border-slate-200/80 shadow-sm hover:border-red-600/20 transition-all hover:-translate-y-1 duration-300 group/point flex flex-col">
+                                {title && (
+                                  <span className="text-slate-900 font-black text-xs block mb-2 uppercase tracking-tight group-hover/point:text-red-600 transition-colors">
+                                    {title.replace(/[:*]/g, '').trim()}:
+                                  </span>
                                 )}
+                                <p className="text-slate-500 text-xs lg:text-sm leading-relaxed font-medium">
+                                  {desc.trim()}
+                                </p>
                               </div>
                             );
                           })}
@@ -308,7 +383,7 @@ const App = () => {
 
         <footer className="py-12 border-t border-slate-200 text-center bg-white mt-auto">
           <p className="text-slate-400 text-[10px] font-black tracking-[0.4em] uppercase">
-            © 2025 ABB INDIA LIMITED — INTERNAL LEADERSHIP COMMAND
+            © 2026 ABB INDIA LIMITED — INTERNAL LEADERSHIP COMMAND
           </p>
         </footer>
       </div>
@@ -331,7 +406,7 @@ const StatCard = ({ label, value, icon }) => (
     <div className="flex items-center justify-between mb-2">
       <div className="text-3xl font-black tracking-tighter text-slate-900 group-hover:scale-105 transition-transform duration-500">{value}</div>
       <div className="w-9 h-9 bg-slate-50 rounded-xl flex items-center justify-center transition-colors group-hover:bg-slate-100">
-        {React.cloneElement(icon, { size: 18 })}
+        {icon}
       </div>
     </div>
     <div className="text-[9px] font-black text-slate-400 tracking-[0.2em] uppercase">{label}</div>

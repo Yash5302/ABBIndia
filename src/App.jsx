@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useRef } from 'react';
-import { Search, ChevronDown, ChevronUp, FileText, User, BarChart3, Users, Briefcase, Info, LayoutDashboard, Receipt, Gavel, Upload, FileSpreadsheet } from 'lucide-react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { Search, ChevronDown, ChevronUp, FileText, User, BarChart3, Users, Briefcase, Info, LayoutDashboard, Receipt, Gavel, Upload, FileSpreadsheet, RotateCcw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import * as XLSX from 'xlsx';
@@ -11,12 +11,19 @@ function cn(...inputs) {
 }
 
 const App = () => {
-  const [data, setData] = useState(initialData);
+  const [data, setData] = useState(() => {
+    const saved = localStorage.getItem('agm_dashboard_data');
+    return saved ? JSON.parse(saved) : initialData;
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeSpeaker, setActiveSpeaker] = useState('All');
   const [expandedId, setExpandedId] = useState(null);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem('agm_dashboard_data', JSON.stringify(data));
+  }, [data]);
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -38,6 +45,16 @@ const App = () => {
       }
     };
     reader.readAsBinaryString(file);
+  };
+
+  const handleResetData = () => {
+    if (window.confirm('Are you sure you want to reset to original dashboard data? This will clear your uploaded file.')) {
+      setData(initialData);
+      localStorage.removeItem('agm_dashboard_data');
+      setActiveCategory('All');
+      setActiveSpeaker('All');
+      setExpandedId(null);
+    }
   };
 
   const categories = useMemo(() => {
@@ -172,6 +189,13 @@ const App = () => {
             >
               <Upload size={14} />
               <span>Upload Excel</span>
+            </button>
+            <button
+              onClick={handleResetData}
+              className="flex items-center justify-center w-10 h-10 bg-white border border-slate-200 text-slate-400 rounded-xl hover:text-red-600 hover:border-red-100 hover:bg-red-50 transition-all group"
+              title="Reset to Original Data"
+            >
+              <RotateCcw size={16} className="group-hover:rotate-[-45deg] transition-transform" />
             </button>
             <div className="h-6 w-px bg-slate-200 mx-1 hidden md:block" />
             <div className="flex items-center gap-2 text-right hidden md:block">
